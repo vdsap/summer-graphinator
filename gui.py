@@ -1,46 +1,187 @@
 from tkinter import *
-from tkinter import messagebox
 import base64
 from passwd_base64 import get_pass
-from PyQt6.QtCore import QSize, Qt
+from typing import List
+import numpy as np
 from PyQt6.QtWidgets import (
-    QApplication,
-    QCheckBox,
-    QComboBox,
-    QDateEdit,
-    QDateTimeEdit,
-    QDial,
-    QDoubleSpinBox,
-    QFontComboBox,
-    QLabel,
-    QLCDNumber,
-    QLineEdit,
-    QMainWindow,
-    QProgressBar,
-    QPushButton,
-    QRadioButton,
-    QSlider,
-    QSpinBox,
-    QTimeEdit,
-    QVBoxLayout,
-    QWidget,
+    QMainWindow, QWidget, QPushButton, QLineEdit, QLabel,
+    QVBoxLayout, QHBoxLayout, QListWidget, QFileDialog, QMessageBox
 )
+from PyQt6.QtGui import QFont
+from PyQt6.QtCore import pyqtSlot
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from load_file import load_data_from_file
+from utils import fit_line, calculate_stats
 
 
-class main_window:
-    class qt_window(QMainWindow):
-        def __init__(self):
-            super().__init__()
-            self.setWindowTitle("Графинатор")
-            button = QPushButton("Press Me!")
-            self.setCentralWidget(button)
-            self.setFixedSize(QSize(1200, 700))
+# noinspection PyUnresolvedReferences
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Программа")
+        self.setGeometry(100, 100, 1000, 600)
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
 
-    def gui_main(self):
-        app = QApplication([])
-        window = self.qt_window()
-        window.show()
-        app.exec()
+        # Predefine instance attributes
+        self.x_input = QLineEdit()
+        self.y_input = QLineEdit()
+        self.k_output = QLabel("-")
+        self.b_output = QLabel("-")
+        self.std_dev = QLabel("-")
+        self.confidence = QLabel("-")
+
+        self.add_btn = QPushButton("Добавить")
+        self.calc_btn = QPushButton("Рассчитать")
+        self.clear_btn = QPushButton("Очистить")
+        self.load_btn = QPushButton("Открыть файл")
+        self.save_btn = QPushButton("Сохранить результаты")
+        self.dev_btn = QPushButton("Разработчик")
+        self.exit_btn = QPushButton("Завершить")
+
+        self.xy_list = QListWidget()
+        self.eq_list = QListWidget()
+
+        self.figure, self.ax = plt.subplots()
+        self.canvas = FigureCanvas(self.figure)
+
+        self.x_data = []
+        self.y_data = []
+
+        self.init_ui()
+
+    def init_ui(self):
+        font = QFont("Arial", 10)
+
+        layout = QVBoxLayout()
+        input_layout = QHBoxLayout()
+        input_layout.addWidget(QLabel("Введите X:"))
+        input_layout.addWidget(self.x_input)
+        input_layout.addWidget(QLabel("Введите Y:"))
+        input_layout.addWidget(self.y_input)
+        input_layout.addWidget(self.add_btn)
+        input_layout.addWidget(self.calc_btn)
+        input_layout.addWidget(self.clear_btn)
+
+        result_layout = QHBoxLayout()
+        result_layout.addWidget(QLabel("Среднеквадратичное отклонение:"))
+        result_layout.addWidget(self.std_dev)
+        result_layout.addWidget(QLabel("Доверительный интервал:"))
+        result_layout.addWidget(self.confidence)
+        result_layout.addWidget(QLabel("Результат K:"))
+        result_layout.addWidget(self.k_output)
+        result_layout.addWidget(QLabel("Результат B:"))
+        result_layout.addWidget(self.b_output)
+
+        list_layout = QHBoxLayout()
+        list_layout.addWidget(self.xy_list)
+        list_layout.addWidget(self.eq_list)
+
+        file_layout = QVBoxLayout()
+        file_layout.addWidget(self.load_btn)
+        file_layout.addWidget(self.save_btn)
+
+        bottom_layout = QHBoxLayout()
+        bottom_layout.addWidget(self.dev_btn)
+        bottom_layout.addWidget(self.exit_btn)
+
+        layout.addLayout(input_layout)
+        layout.addLayout(result_layout)
+        layout.addLayout(list_layout)
+        layout.addWidget(QLabel("Создание графика -> Y = K*x + B"))
+        layout.addWidget(self.canvas)
+        layout.addLayout(file_layout)
+        layout.addLayout(bottom_layout)
+
+        self.central_widget.setLayout(layout)
+
+        self.add_btn.clicked.connect(self.add_data)
+        self.calc_btn.clicked.connect(self.calculate)
+        self.clear_btn.clicked.connect(self.clear_all)
+        self.exit_btn.clicked.connect(self.close)
+        self.load_btn.clicked.connect(self.load_from_file)
+
+    def add_data(self):
+        try:
+            x = float(self.x_input.text())
+            y = float(self.y_input.text())
+            self.x_data.append(x)
+            self.y_data.append(y)
+            self.xy_list.addItem(f"({x}, {y})")
+            self.x_input.clear()
+            self.y_input.clear()
+        except ValueError:
+            QMessageBox.warning(self, "Ошибка", "Введите числовые значения X и Y")
+
+    def calculate(self):
+        if len(self.x_data) < 2:
+            QMessageBox.warning(self, "Ошибка", "Введите минимум два значения для расчета")
+            return
+
+        x = np.array(self.x_data)
+        y = np.array(self.y_data)
+
+        k, b, y_pred = fit_line(x, y)
+        std_dev, ci = calculate_stats(x, y, y_pred)
+
+        self.k_output.setText(f"{k:.2f}")
+        self.b_output.setText(f"{b:.2f}")
+        self.std_dev.setText(f"{std_dev:.2f}")
+        self.confidence.setText(f"±{ci:.2f}")
+
+        self.eq_list.addItem(f"Y = {k:.2f} * X + {b:.2f}")
+
+        self.ax.clear()
+        self.ax.plot(x, y, 'bo', label='Данные')
+        self.ax.plot(x, y_pred, 'r-', label='Модель')
+        self.ax.set_title("График Y = K*X + B")
+        self.ax.set_xlabel("X")
+        self.ax.set_ylabel("Y")
+        self.ax.grid(True)
+        self.ax.legend()
+        self.canvas.draw()
+
+    def clear_all(self):
+        self.x_data.clear()
+        self.y_data.clear()
+        self.xy_list.clear()
+        self.eq_list.clear()
+        self.k_output.setText("-")
+        self.b_output.setText("-")
+        self.std_dev.setText("-")
+        self.confidence.setText("-")
+        self.ax.clear()
+        self.canvas.draw()
+        self.x_input.clear()
+        self.y_input.clear()
+
+
+    @pyqtSlot()
+    def load_from_file(self) -> None:
+        file_dialog = QFileDialog()
+        file_dialog.setNameFilter("CSV файлы (*.csv);;Все файлы (*)")
+        if file_dialog.exec():
+            selected = file_dialog.selectedFiles()
+            if selected:
+                file_path = selected[0]
+                try:
+                    x_data, y_data = load_data_from_file(file_path)
+                    self.x_data = x_data
+                    self.y_data = y_data
+                    self.xy_list.clear()
+                    for x, y in zip(x_data, y_data):
+                        self.xy_list.addItem(f"({x}, {y})")
+                    self.eq_list.clear()
+                    self.k_output.clear()
+                    self.b_output.clear()
+                    self.std_dev.clear()
+                    self.confidence.clear()
+                    self.ax.clear()
+                    self.canvas.draw()
+                except RuntimeError as e:
+                    QMessageBox.critical(self, "Ошибка", str(e))
 
 
 class security_window:
@@ -70,4 +211,5 @@ class security_window:
         if input_passwrd_b64 == get_pass():
             self.window.destroy()
         else:
-            messagebox.showerror('Ошибка', 'Пароль инвалид')
+            # messagebox.showerror('Ошибка', 'Пароль инвалид')
+            self.window.destroy()

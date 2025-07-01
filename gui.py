@@ -7,8 +7,8 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QPushButton, QLineEdit, QLabel,
     QVBoxLayout, QHBoxLayout, QListWidget, QFileDialog, QMessageBox
 )
-from PyQt6.QtGui import QFont
-from PyQt6.QtCore import pyqtSlot
+from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtCore import pyqtSlot, Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
@@ -20,27 +20,34 @@ from utils import fit_line, calculate_stats
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Программа")
+        self.setWindowTitle("Графинатор")
         self.setGeometry(100, 100, 1000, 600)
+        self.setWindowIcon(QIcon("графинатор-ico.ico"))
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
 
         # Predefine instance attributes
         self.x_input = QLineEdit()
         self.y_input = QLineEdit()
-        self.k_output = QLabel("-")
-        self.b_output = QLabel("-")
-        self.std_dev = QLabel("-")
-        self.confidence = QLabel("-")
+        self.k_output = QLabel(" ")
+        self.b_output = QLabel(" ")
+        self.std_dev = QLabel(" ")
+        self.confidence = QLabel(" ")
 
         self.add_btn = QPushButton("Добавить")
         self.calc_btn = QPushButton("Рассчитать")
         self.clear_btn = QPushButton("Очистить")
         self.load_btn = QPushButton("Открыть файл")
         self.save_btn = QPushButton("Сохранить результаты")
-        self.dev_btn = QPushButton("Разработчик")
+        # TODO: сохранение результатов в файл
         self.exit_btn = QPushButton("Завершить")
 
+        self.dev_text = QLabel("Разработчик")
+        self.dev_text.setStyleSheet("QLabel {text-decoration: underline; color: #0099ff;}")
+        self.dev_text.setToolTip("Сапожков Вадим\nvdsap@vdsap.com")
+        self.dev_text.setToolTipDuration(5000)
+
+        self.dev_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.xy_list = QListWidget()
         self.eq_list = QListWidget()
 
@@ -75,23 +82,27 @@ class MainWindow(QMainWindow):
         result_layout.addWidget(QLabel("Результат B:"))
         result_layout.addWidget(self.b_output)
 
-        list_layout = QHBoxLayout()
+        list_layout = QVBoxLayout()
+        list_layout.addWidget(QLabel("(X, Y)"))
         list_layout.addWidget(self.xy_list)
+        list_layout.addWidget(QLabel("Y = B*Xᵏ"))
         list_layout.addWidget(self.eq_list)
+
+        plot_and_lists = QHBoxLayout()
+        plot_and_lists.addLayout(list_layout)
+        plot_and_lists.addWidget(self.canvas)
 
         file_layout = QVBoxLayout()
         file_layout.addWidget(self.load_btn)
         file_layout.addWidget(self.save_btn)
 
         bottom_layout = QHBoxLayout()
-        bottom_layout.addWidget(self.dev_btn)
+        bottom_layout.addWidget(self.dev_text)
         bottom_layout.addWidget(self.exit_btn)
 
         layout.addLayout(input_layout)
         layout.addLayout(result_layout)
-        layout.addLayout(list_layout)
-        layout.addWidget(QLabel("Создание графика -> Y = K*x + B"))
-        layout.addWidget(self.canvas)
+        layout.addLayout(plot_and_lists)
         layout.addLayout(file_layout)
         layout.addLayout(bottom_layout)
 
@@ -131,12 +142,12 @@ class MainWindow(QMainWindow):
         self.std_dev.setText(f"{std_dev:.2f}")
         self.confidence.setText(f"±{ci:.2f}")
 
-        self.eq_list.addItem(f"Y = {k:.2f} * X + {b:.2f}")
+        self.eq_list.addItem(f"Y = {b:.2f} * (X^{k:.2f}) ")
 
         self.ax.clear()
         self.ax.plot(x, y, 'bo', label='Данные')
         self.ax.plot(x, y_pred, 'r-', label='Модель')
-        self.ax.set_title("График Y = K*X + B")
+        self.ax.set_title("График Y = B*Xᵏ")
         self.ax.set_xlabel("X")
         self.ax.set_ylabel("Y")
         self.ax.grid(True)
@@ -156,7 +167,6 @@ class MainWindow(QMainWindow):
         self.canvas.draw()
         self.x_input.clear()
         self.y_input.clear()
-
 
     @pyqtSlot()
     def load_from_file(self) -> None:

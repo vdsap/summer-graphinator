@@ -1,3 +1,4 @@
+import sys
 from tkinter import *
 import base64
 from passwd_base64 import get_pass
@@ -39,7 +40,6 @@ class MainWindow(QMainWindow):
         self.clear_btn = QPushButton("Очистить")
         self.load_btn = QPushButton("Открыть файл")
         self.save_btn = QPushButton("Сохранить результаты")
-        # TODO: сохранение результатов в файл
         self.exit_btn = QPushButton("Завершить")
 
         self.dev_text = QLabel("Разработчик")
@@ -113,6 +113,8 @@ class MainWindow(QMainWindow):
         self.clear_btn.clicked.connect(self.clear_all)
         self.exit_btn.clicked.connect(self.close)
         self.load_btn.clicked.connect(self.load_from_file)
+        self.save_btn.clicked.connect(self.save_results)
+
 
     def add_data(self):
         try:
@@ -168,6 +170,34 @@ class MainWindow(QMainWindow):
         self.x_input.clear()
         self.y_input.clear()
 
+    def save_results(self):
+        if not self.x_data or not self.y_data:
+            QMessageBox.warning(self, "Предупреждение", "Нет данных для сохранения.")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(self, "Сохранить результаты", "results.txt",
+                                                   "Text Files (*.txt)")
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write("""Результаты расчета:
+Входные данные(X, Y):
+""")
+                for x, y in zip(self.x_data, self.y_data):
+                    f.write(f"""({x}, {y})
+""")
+                f.write(f"""Уравнение: Y = B * X^K"
+K: {self.k_output.text()}
+B: {self.b_output.text()}
+Среднеквадратичное отклонение: {self.std_dev.text()}
+Доверительный интервал: {self.confidence.text()}
+""")
+                QMessageBox.information(self, "Успех", "Результаты успешно сохранены.")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Ошибка при сохранении: {str(e)}")
+
     @pyqtSlot()
     def load_from_file(self) -> None:
         file_dialog = QFileDialog()
@@ -211,6 +241,7 @@ class security_window:
         self.pass_field.focus()
         enter_btn = Button(self.window, text="Войти", font=("Arial", 10), command=self.gui_security_enter)
         enter_btn.grid(column=0, row=3)
+        self.window.protocol("WM_DELETE_WINDOW", self.on_close)
         self.window.mainloop()
 
     def gui_security_enter(self):
@@ -223,3 +254,7 @@ class security_window:
         else:
             # messagebox.showerror('Ошибка', 'Пароль инвалид')
             self.window.destroy()
+
+    def on_close(self):
+        self.window.destroy()
+        sys.exit()

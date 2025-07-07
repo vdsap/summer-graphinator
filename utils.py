@@ -4,10 +4,12 @@ import math
 
 
 def fit_line(x: np.ndarray, y: np.ndarray) -> tuple[float, float, np.ndarray]:
-    n = len(x)
-    k = calculate_k(x, y, n)
-    log_b = (sum(np.log(y)) - k * sum(np.log(x))) / n
-    b = math.exp(log_b)
+    if np.any(x <= 0) or np.any(y <= 0):
+        raise ValueError("Все значения X и Y должны быть положительными")
+    log_x = np.log(x)
+    log_y = np.log(y)
+    k, log_b = np.polyfit(log_x, log_y, 1)
+    b = np.exp(log_b)
     y_pred = b * x ** k
     return k, b, y_pred
 
@@ -17,7 +19,6 @@ def calculate_k(x, y, n):
     sum_ln_y = sum(math.log(y) for y in y)
     sum_ln_xln_y = sum(math.log(x[i]) * math.log(y[i]) for i in range(n))
     sum_ln_x_squared = sum(math.log(x) ** 2 for x in x)
-
     numerator = sum_ln_x * sum_ln_y - n * sum_ln_xln_y
     denominator = sum_ln_x ** 2 - n * sum_ln_x_squared
 

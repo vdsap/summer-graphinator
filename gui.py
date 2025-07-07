@@ -1,23 +1,21 @@
 import sys
 from tkinter import *
+from tkinter import messagebox
 import base64
 from passwd_base64 import get_pass
-from typing import List
 import numpy as np
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QPushButton, QLineEdit, QLabel,
     QVBoxLayout, QHBoxLayout, QListWidget, QFileDialog, QMessageBox
 )
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import pyqtSlot, Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
 from load_file import load_data_from_file
-from utils import fit_line, calculate_stats
+from utils import calculate_stats
 
 
-# noinspection PyUnresolvedReferences
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -26,42 +24,32 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon("графинатор-ico.ico"))
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
-
-        # Predefine instance attributes
         self.x_input = QLineEdit()
         self.y_input = QLineEdit()
         self.k_output = QLabel(" ")
         self.b_output = QLabel(" ")
         self.std_dev = QLabel(" ")
         self.confidence = QLabel(" ")
-
         self.add_btn = QPushButton("Добавить")
         self.calc_btn = QPushButton("Рассчитать")
         self.clear_btn = QPushButton("Очистить")
         self.load_btn = QPushButton("Открыть файл")
         self.save_btn = QPushButton("Сохранить результаты")
         self.exit_btn = QPushButton("Завершить")
-
         self.dev_text = QLabel("Разработчик")
         self.dev_text.setStyleSheet("QLabel {text-decoration: underline; color: #0099ff;}")
         self.dev_text.setToolTip("Сапожков Вадим\nvdsap@vdsap.com")
         self.dev_text.setToolTipDuration(5000)
-
         self.dev_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.xy_list = QListWidget()
         self.eq_list = QListWidget()
-
         self.figure, self.ax = plt.subplots()
         self.canvas = FigureCanvas(self.figure)
-
         self.x_data = []
         self.y_data = []
-
         self.init_ui()
 
     def init_ui(self):
-        font = QFont("Arial", 10)
-
         layout = QVBoxLayout()
         input_layout = QHBoxLayout()
         input_layout.addWidget(QLabel("Введите X:"))
@@ -71,7 +59,6 @@ class MainWindow(QMainWindow):
         input_layout.addWidget(self.add_btn)
         input_layout.addWidget(self.calc_btn)
         input_layout.addWidget(self.clear_btn)
-
         result_layout = QHBoxLayout()
         result_layout.addWidget(QLabel("Среднеквадратичное отклонение:"))
         result_layout.addWidget(self.std_dev)
@@ -81,40 +68,32 @@ class MainWindow(QMainWindow):
         result_layout.addWidget(self.k_output)
         result_layout.addWidget(QLabel("Результат B:"))
         result_layout.addWidget(self.b_output)
-
         list_layout = QVBoxLayout()
         list_layout.addWidget(QLabel("(X, Y)"))
         list_layout.addWidget(self.xy_list)
         list_layout.addWidget(QLabel("Y = B*Xᵏ"))
         list_layout.addWidget(self.eq_list)
-
         plot_and_lists = QHBoxLayout()
         plot_and_lists.addLayout(list_layout)
         plot_and_lists.addWidget(self.canvas)
-
         file_layout = QVBoxLayout()
         file_layout.addWidget(self.load_btn)
         file_layout.addWidget(self.save_btn)
-
         bottom_layout = QHBoxLayout()
         bottom_layout.addWidget(self.dev_text)
         bottom_layout.addWidget(self.exit_btn)
-
         layout.addLayout(input_layout)
         layout.addLayout(result_layout)
         layout.addLayout(plot_and_lists)
         layout.addLayout(file_layout)
         layout.addLayout(bottom_layout)
-
         self.central_widget.setLayout(layout)
-
         self.add_btn.clicked.connect(self.add_data)
         self.calc_btn.clicked.connect(self.calculate)
         self.clear_btn.clicked.connect(self.clear_all)
         self.exit_btn.clicked.connect(self.close)
         self.load_btn.clicked.connect(self.load_from_file)
         self.save_btn.clicked.connect(self.save_results)
-
 
     def add_data(self):
         try:
@@ -130,26 +109,48 @@ class MainWindow(QMainWindow):
 
     def calculate(self):
         if len(self.x_data) < 2:
-            QMessageBox.warning(self, "Ошибка", "Введите минимум два значения для расчета")
+            QMessageBox.warning(self, "Ошибка", "Введите минимум два значения")
             return
-
         x = np.array(self.x_data)
         y = np.array(self.y_data)
-
-        k, b, y_pred = fit_line(x, y)
+        try:
+            k_list = []
+            b_list = []
+            y_fits = []
+            for i in range(len(x)):
+                for j in range(i + 1, len(x)):
+                    x1, x2 = x[i], x[j]
+                    y1, y2 = y[i], y[j]
+                    if x1 <= 0 or x2 <= 0 or y1 <= 0 or y2 <= 0:
+                        continue
+                    try:
+                        k_ij = (np.log(y2) - np.log(y1)) / (np.log(x2) - np.log(x1))
+                        b_ij = np.exp(np.log(y1) - k_ij * np.log(x1))
+                        k_list.append(k_ij)
+                        b_list.append(b_ij)
+                        y_fits.append((k_ij, b_ij))
+                    except Exception:
+                        continue
+            if not k_list or not b_list:
+                raise ValueError("Недостаточно данных для расчета")
+            k = sum(k_list) / len(k_list)
+            b = sum(b_list) / len(b_list)
+            y_pred = b * x ** k
+        except ValueError:
+            QMessageBox.critical(self, "Ошибка", "Недостаточно данных для расчета")
+            return
         std_dev, ci = calculate_stats(x, y, y_pred)
-
         self.k_output.setText(f"{k:.2f}")
         self.b_output.setText(f"{b:.2f}")
         self.std_dev.setText(f"{std_dev:.2f}")
         self.confidence.setText(f"±{ci:.2f}")
-
-        self.eq_list.addItem(f"Y = {b:.2f} * (X^{k:.2f}) ")
-
+        self.eq_list.clear()
+        for k_val, b_val in y_fits:
+            self.eq_list.addItem(f"Y = {b_val:.2f} * X^{k_val:.2f}")
         self.ax.clear()
         self.ax.plot(x, y, 'bo', label='Данные')
         self.ax.plot(x, y_pred, 'r-', label='Модель')
-        self.ax.set_title("График Y = B*Xᵏ")
+        self.ax.set_title("График Y = B * X^K")
         self.ax.set_xlabel("X")
         self.ax.set_ylabel("Y")
         self.ax.grid(True)
@@ -174,14 +175,12 @@ class MainWindow(QMainWindow):
         if not self.x_data or not self.y_data:
             QMessageBox.warning(self, "Предупреждение", "Нет данных для сохранения.")
             return
-
-        file_path, _ = QFileDialog.getSaveFileName(self, "Сохранить результаты", "results.txt",
-                                                   "Text Files (*.txt)")
-        if not file_path:
+        text_path, _ = QFileDialog.getSaveFileName(self, "Сохранить результаты", "results.txt", "Text Files (*.txt)")
+        if not text_path:
             return
-
+        plot_path = text_path.rsplit('.', 1)[0] + "_plot.png"
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(text_path, 'w', encoding='utf-8') as f:
                 f.write("""Результаты расчета:
 Входные данные(X, Y):
 """)
@@ -194,6 +193,7 @@ B: {self.b_output.text()}
 Среднеквадратичное отклонение: {self.std_dev.text()}
 Доверительный интервал: {self.confidence.text()}
 """)
+                self.figure.savefig(plot_path)
                 QMessageBox.information(self, "Успех", "Результаты успешно сохранены.")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка при сохранении: {str(e)}")
@@ -252,8 +252,8 @@ class security_window:
         if input_passwrd_b64 == get_pass():
             self.window.destroy()
         else:
-            # messagebox.showerror('Ошибка', 'Пароль инвалид')
-            self.window.destroy()
+            messagebox.showerror('Ошибка', 'Пароль инвалид')
+            # self.window.destroy()
 
     def on_close(self):
         self.window.destroy()
